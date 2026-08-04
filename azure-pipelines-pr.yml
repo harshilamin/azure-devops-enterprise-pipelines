@@ -1,0 +1,13 @@
+name: pr-$(System.PullRequest.PullRequestId)-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+
+pr: none
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+
+stages:
+  - template: pipelines/templates/stages/application-quality.yml
+    parameters:
+      includeTerraform: true

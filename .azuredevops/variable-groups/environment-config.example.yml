@@ -1,0 +1,10 @@
+name: pipeline-demo-ENV-config
+variables:
+  azureServiceConnection: sc-azure-wif-platform
+  acrLoginServer: replace-me.azurecr.io
+  imageRepository: pipeline-demo-api
+  aksResourceGroup: replace-me-rg
+  aksClusterName: replace-me-aks
+  keyVaultName: replace-me-kv
+  productionApprovers: '[portfolio-project]\\Release Approvers'
+  changeTicket: PORTFOLIO-DEMO

@@ -1,0 +1,27 @@
+parameters:
+  stageName: Production_Approval
+  dependsOn: []
+  approvers: ''
+  instructions: Review the release bundle, QA evidence, change record, and rollback plan.
+  timeoutMinutes: 1440
+  condition: succeeded()
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Production manual validation
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - job: Manual_Validation
+        displayName: Validate Production release
+        pool: server
+        timeoutInMinutes: ${{ parameters.timeoutMinutes }}
+        steps:
+          - task: ManualValidation@1
+            timeoutInMinutes: ${{ parameters.timeoutMinutes }}
+            inputs:
+              notifyUsers: ${{ parameters.approvers }}
+              approvers: ${{ parameters.approvers }}
+              allowApproversToApproveTheirOwnRuns: false
+              instructions: ${{ parameters.instructions }}
+              onTimeout: reject

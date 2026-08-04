@@ -1,0 +1,36 @@
+parameters:
+  installTerraform: false
+  installHelm: false
+  installKubectl: false
+  installTrivy: false
+  installSyft: false
+  installCosign: false
+
+steps:
+  - ${{ if eq(parameters.installTerraform, true) }}:
+      - bash: ./scripts/tools/install-terraform.sh '$(terraformVersion)'
+        displayName: Install Terraform $(terraformVersion)
+
+  - ${{ if eq(parameters.installHelm, true) }}:
+      - task: HelmInstaller@1
+        displayName: Install Helm $(helmVersion)
+        inputs:
+          helmVersionToInstall: '$(helmVersion)'
+
+  - ${{ if eq(parameters.installKubectl, true) }}:
+      - task: KubectlInstaller@0
+        displayName: Install kubectl $(kubectlVersion)
+        inputs:
+          kubectlVersion: '$(kubectlVersion)'
+
+  - ${{ if eq(parameters.installTrivy, true) }}:
+      - bash: ./scripts/tools/install-trivy.sh '$(trivyVersion)'
+        displayName: Install Trivy $(trivyVersion)
+
+  - ${{ if eq(parameters.installSyft, true) }}:
+      - bash: ./scripts/tools/install-syft.sh '$(syftVersion)'
+        displayName: Install Syft $(syftVersion)
+
+  - ${{ if eq(parameters.installCosign, true) }}:
+      - bash: ./scripts/tools/install-cosign.sh '$(cosignVersion)'
+        displayName: Install Cosign $(cosignVersion)

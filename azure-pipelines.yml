@@ -1,0 +1,97 @@
+name: app-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - release/*
+  tags:
+    include:
+      - v*
+  paths:
+    exclude:
+      - docs/**
+      - '**/*.md'
+
+pr: none
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+  - group: pipeline-demo-build-config
+
+stages:
+  - template: pipelines/templates/stages/application-quality.yml
+    parameters:
+      includeTerraform: false
+
+  - template: pipelines/templates/stages/container-release.yml
+    parameters:
+      dependsOn: Quality
+      azureServiceConnection: $(acrServiceConnection)
+      acrLoginServer: $(acrLoginServer)
+      imageRepository: $(imageRepository)
+      cosignKeyReference: $(cosignKeyReference)
+
+  - template: pipelines/templates/stages/deploy-aks.yml
+    parameters:
+      stageName: Deploy_Development
+      displayName: Deploy Development
+      dependsOn: Container_Release
+      environmentName: development
+      azureDevOpsEnvironment: pipeline-demo-dev
+      variableGroupName: pipeline-demo-dev-config
+      azureServiceConnection: $(azureServiceConnection)
+      keyVaultName: $(keyVaultName)
+      aksResourceGroup: $(aksResourceGroup)
+      aksClusterName: $(aksClusterName)
+      namespace: pipeline-demo-dev
+      valuesFile: deploy/helm/pipeline-demo-api/values-dev.yaml
+      acrLoginServer: $(acrLoginServer)
+      imageRepository: $(imageRepository)
+      smokeTestPath: /api/v1/build
+
+  - template: pipelines/templates/stages/deploy-aks.yml
+    parameters:
+      stageName: Deploy_QA
+      displayName: Promote same digest to QA
+      dependsOn: Deploy_Development
+      environmentName: qa
+      azureDevOpsEnvironment: pipeline-demo-qa
+      variableGroupName: pipeline-demo-qa-config
+      azureServiceConnection: $(azureServiceConnection)
+      keyVaultName: $(keyVaultName)
+      aksResourceGroup: $(aksResourceGroup)
+      aksClusterName: $(aksClusterName)
+      namespace: pipeline-demo-qa
+      valuesFile: deploy/helm/pipeline-demo-api/values-qa.yaml
+      acrLoginServer: $(acrLoginServer)
+      imageRepository: $(imageRepository)
+      smokeTestPath: /api/v1/build
+
+  - template: pipelines/templates/stages/manual-validation.yml
+    parameters:
+      dependsOn: Deploy_QA
+      condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+      approvers: $(productionApprovers)
+      instructions: >-
+        Review QA deployment evidence, vulnerability report, SBOM, image digest,
+        change ticket $(changeTicket), and documented rollback path.
+
+  - template: pipelines/templates/stages/deploy-aks.yml
+    parameters:
+      stageName: Deploy_Production
+      displayName: Promote same digest to Production
+      dependsOn: Production_Approval
+      condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+      environmentName: production
+      azureDevOpsEnvironment: pipeline-demo-prod
+      variableGroupName: pipeline-demo-prod-config
+      azureServiceConnection: $(azureServiceConnection)
+      keyVaultName: $(keyVaultName)
+      aksResourceGroup: $(aksResourceGroup)
+      aksClusterName: $(aksClusterName)
+      namespace: pipeline-demo-prod
+      valuesFile: deploy/helm/pipeline-demo-api/values-prod.yaml
+      acrLoginServer: $(acrLoginServer)
+      imageRepository: $(imageRepository)
+      smokeTestPath: /health/ready

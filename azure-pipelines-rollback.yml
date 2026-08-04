@@ -1,0 +1,99 @@
+name: rollback-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+pr: none
+
+parameters:
+  - name: targetEnvironment
+    type: string
+    default: qa
+    values: [dev, qa, prod]
+  - name: targetDigest
+    displayName: Known-good SHA-256 digest
+    type: string
+  - name: reason
+    displayName: Rollback reason or incident reference
+    type: string
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+  - group: pipeline-demo-${{ parameters.targetEnvironment }}-config
+
+stages:
+  - stage: Validate_Rollback
+    jobs:
+      - job: Validate
+        pool:
+          vmImage: $(vmImage)
+        steps:
+          - checkout: self
+          - template: pipelines/templates/steps/setup-python.yml
+            parameters:
+              versionSpec: $(pythonVersion)
+              installDevDependencies: true
+          - bash: |
+              set -euo pipefail
+              python scripts/validate_digest.py '${{ parameters.targetDigest }}'
+              mkdir -p '$(Build.ArtifactStagingDirectory)/rollback-bundle'
+              printf '%s\n' '${{ parameters.targetDigest }}' \
+                > '$(Build.ArtifactStagingDirectory)/rollback-bundle/image-digest.txt'
+              cat > '$(Build.ArtifactStagingDirectory)/rollback-bundle/rollback.json' <<EOF
+              {
+                "environment": "${{ parameters.targetEnvironment }}",
+                "digest": "${{ parameters.targetDigest }}",
+                "reason": "${{ parameters.reason }}",
+                "requestedBy": "$(Build.RequestedFor)",
+                "sourceRun": "$(Build.BuildNumber)"
+              }
+              EOF
+            displayName: Validate and record rollback request
+          - publish: '$(Build.ArtifactStagingDirectory)/rollback-bundle'
+            artifact: $(releaseBundleArtifact)
+
+  - ${{ if eq(parameters.targetEnvironment, 'prod') }}:
+      - template: pipelines/templates/stages/manual-validation.yml
+        parameters:
+          stageName: Rollback_Approval
+          dependsOn: Validate_Rollback
+          approvers: $(productionApprovers)
+          instructions: >-
+            Validate the incident reference, known-good digest, current impact,
+            and forward-fix plan. Self-approval is disabled.
+
+  - ${{ if eq(parameters.targetEnvironment, 'prod') }}:
+      - template: pipelines/templates/stages/deploy-aks.yml
+        parameters:
+          stageName: Execute_Rollback
+          displayName: Roll back Production
+          dependsOn: Rollback_Approval
+          environmentName: production
+          azureDevOpsEnvironment: pipeline-demo-prod
+          variableGroupName: pipeline-demo-prod-config
+          azureServiceConnection: $(azureServiceConnection)
+          keyVaultName: $(keyVaultName)
+          aksResourceGroup: $(aksResourceGroup)
+          aksClusterName: $(aksClusterName)
+          namespace: pipeline-demo-prod
+          valuesFile: deploy/helm/pipeline-demo-api/values-prod.yaml
+          acrLoginServer: $(acrLoginServer)
+          imageRepository: $(imageRepository)
+          smokeTestPath: /health/ready
+
+  - ${{ if ne(parameters.targetEnvironment, 'prod') }}:
+      - template: pipelines/templates/stages/deploy-aks.yml
+        parameters:
+          stageName: Execute_Rollback
+          displayName: Roll back ${{ parameters.targetEnvironment }}
+          dependsOn: Validate_Rollback
+          environmentName: ${{ parameters.targetEnvironment }}
+          azureDevOpsEnvironment: pipeline-demo-${{ parameters.targetEnvironment }}
+          variableGroupName: pipeline-demo-${{ parameters.targetEnvironment }}-config
+          azureServiceConnection: $(azureServiceConnection)
+          keyVaultName: $(keyVaultName)
+          aksResourceGroup: $(aksResourceGroup)
+          aksClusterName: $(aksClusterName)
+          namespace: pipeline-demo-${{ parameters.targetEnvironment }}
+          valuesFile: deploy/helm/pipeline-demo-api/values-${{ parameters.targetEnvironment }}.yaml
+          acrLoginServer: $(acrLoginServer)
+          imageRepository: $(imageRepository)
+          smokeTestPath: /health/ready

@@ -1,0 +1,13 @@
+name: pipeline-demo-build-config
+variables:
+  acrServiceConnection: sc-azure-wif-platform
+  acrLoginServer: replace-me.azurecr.io
+  imageRepository: pipeline-demo-api
+  cosignEnabled: 'false'
+  cosignKeyReference: azurekms://replace-me.vault.azure.net/cosign-signing-key
+  productionApprovers: '[portfolio-project]\\Release Approvers'
+  changeTicket: PORTFOLIO-DEMO
+  sonarEnabled: 'false'
+  sonarServiceConnection: sonarcloud-enterprise
+  sonarOrganization: replace-me
+  sonarProjectKey: replace-me_azure-devops-enterprise-pipelines

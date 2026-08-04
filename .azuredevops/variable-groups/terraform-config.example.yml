@@ -1,0 +1,9 @@
+name: terraform-ENV-config
+variables:
+  azureServiceConnection: sc-azure-wif-platform
+  infrastructureApprovers: '[portfolio-project]\\Platform Approvers'
+  changeTicket: PORTFOLIO-DEMO
+  tfStateResourceGroup: rg-terraform-state
+  tfStateStorageAccount: replacewithstateaccount
+  tfStateContainer: tfstate
+  tfStateKey: azure-devops-enterprise-pipelines-ENV.tfstate

@@ -1,0 +1,22 @@
+parameters:
+  jobName: Repository_Contracts
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Repository and pipeline contract tests
+    pool:
+      vmImage: $(vmImage)
+    steps:
+      - checkout: self
+        clean: true
+
+      - template: ../steps/setup-python.yml
+        parameters:
+          versionSpec: $(pythonVersion)
+          installDevDependencies: true
+
+      - bash: |
+          set -euo pipefail
+          python scripts/validate_repository.py
+          python -m pytest tests/pipeline_contracts -q
+        displayName: Validate repository contracts

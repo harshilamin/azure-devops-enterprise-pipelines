@@ -1,0 +1,86 @@
+parameters:
+  jobName: Application_Quality
+  displayName: Application quality gates
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: ${{ parameters.displayName }}
+    pool:
+      vmImage: $(vmImage)
+    workspace:
+      clean: all
+    steps:
+      - checkout: self
+        clean: true
+        fetchDepth: 0
+
+      - template: ../steps/setup-python.yml
+        parameters:
+          versionSpec: $(pythonVersion)
+          installDevDependencies: true
+
+
+      - task: SonarCloudPrepare@4
+        displayName: Prepare SonarQube Cloud analysis
+        condition: and(succeeded(), eq(variables['sonarEnabled'], 'true'))
+        inputs:
+          SonarCloud: $(sonarServiceConnection)
+          organization: $(sonarOrganization)
+          scannerMode: cli
+          configMode: manual
+          cliProjectKey: $(sonarProjectKey)
+          cliProjectName: azure-devops-enterprise-pipelines
+          cliSources: src
+          extraProperties: |
+            sonar.python.version=3.12
+            sonar.python.coverage.reportPaths=coverage.xml
+            sonar.python.xunit.reportPath=$(Build.ArtifactStagingDirectory)/test-results/junit.xml
+            sonar.tests=tests
+            sonar.exclusions=tests/**
+
+      - bash: |
+          set -euo pipefail
+          python -m ruff format --check .
+          python -m ruff check .
+          python -m mypy
+        displayName: Format, lint, and type check
+
+      - bash: |
+          set -euo pipefail
+          mkdir -p '$(Build.ArtifactStagingDirectory)/test-results'
+          python -m pytest \
+            --junitxml='$(Build.ArtifactStagingDirectory)/test-results/junit.xml'
+        displayName: Run unit and contract tests
+
+
+      - task: SonarCloudAnalyze@4
+        displayName: Run SonarQube Cloud analysis
+        condition: and(succeeded(), eq(variables['sonarEnabled'], 'true'))
+
+      - task: SonarCloudPublish@4
+        displayName: Publish SonarQube Cloud quality gate
+        condition: and(succeeded(), eq(variables['sonarEnabled'], 'true'))
+        inputs:
+          pollingTimeoutSec: '300'
+
+      - task: PublishTestResults@2
+        displayName: Publish test results
+        condition: always()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: '$(Build.ArtifactStagingDirectory)/test-results/junit.xml'
+          failTaskOnFailedTests: true
+          testRunTitle: Pipeline demo tests
+
+      - task: PublishCodeCoverageResults@2
+        displayName: Publish coverage
+        condition: succeededOrFailed()
+        inputs:
+          summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+          pathToSources: '$(System.DefaultWorkingDirectory)/src'
+          failIfCoverageEmpty: true
+
+      - publish: '$(Build.ArtifactStagingDirectory)/test-results'
+        displayName: Publish test-results artifact
+        condition: always()
+        artifact: $(testResultsArtifact)

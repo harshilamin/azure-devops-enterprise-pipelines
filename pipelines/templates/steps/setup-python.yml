@@ -1,0 +1,20 @@
+parameters:
+  versionSpec: '3.12'
+  installDevDependencies: true
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: Use Python ${{ parameters.versionSpec }}
+    inputs:
+      versionSpec: ${{ parameters.versionSpec }}
+      addToPath: true
+
+  - bash: |
+      set -euo pipefail
+      python -m pip install --upgrade pip
+      if [[ '${{ parameters.installDevDependencies }}' == 'true' ]]; then
+        python -m pip install -e '.[dev]'
+      else
+        python -m pip install .
+      fi
+    displayName: Install Python dependencies

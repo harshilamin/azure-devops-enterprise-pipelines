@@ -1,0 +1,70 @@
+site_name: Azure DevOps Enterprise Pipelines
+site_description: Enterprise Azure DevOps YAML pipeline portfolio reference
+site_author: Harshil Amin
+repo_url: https://github.com/harshilamin/azure-devops-enterprise-pipelines
+repo_name: harshilamin/azure-devops-enterprise-pipelines
+edit_uri: edit/main/docs/
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Platform overview: architecture/overview.md
+      - Application delivery: architecture/application-delivery.md
+      - Infrastructure delivery: architecture/infrastructure-delivery.md
+      - Security model: architecture/security-model.md
+  - Setup:
+      - Prerequisites: setup/prerequisites.md
+      - Azure DevOps organization: setup/azure-devops-configuration.md
+      - Service connections: setup/workload-identity-federation.md
+      - First pipeline run: setup/first-run.md
+  - Operations:
+      - Promotion: operations/promotion.md
+      - Rollback: operations/rollback.md
+      - Terraform drift: operations/drift-detection.md
+      - Troubleshooting: operations/troubleshooting.md
+  - Testing:
+      - Validation strategy: testing/validation-strategy.md
+      - Local validation: testing/local-validation.md
+  - Portfolio:
+      - Walkthrough: portfolio/walkthrough.md
+      - Interview questions: portfolio/interview-questions.md
+      - Production next steps: portfolio/production-next-steps.md
+  - Decisions:
+      - ADR 0001 — Template hierarchy: decisions/0001-template-hierarchy.md
+      - ADR 0002 — Build once: decisions/0002-build-once-promote-digest.md
+      - ADR 0003 — WIF: decisions/0003-workload-identity-federation.md
+      - ADR 0004 — Environment approvals: decisions/0004-environment-checks.md
+      - ADR 0005 — Exact Terraform plan: decisions/0005-exact-plan-apply.md
+      - ADR 0006 — Azure Key Vault signing: decisions/0006-azure-key-vault-cosign.md

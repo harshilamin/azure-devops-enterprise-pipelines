@@ -1,0 +1,26 @@
+parameters:
+  chartPath: deploy/helm/pipeline-demo-api
+  outputDirectory: $(Build.ArtifactStagingDirectory)/rendered
+
+steps:
+  - bash: |
+      set -euo pipefail
+      mkdir -p '${{ parameters.outputDirectory }}'
+      helm lint '${{ parameters.chartPath }}' --strict
+      for environment in dev qa prod; do
+        helm lint '${{ parameters.chartPath }}' \
+          --strict \
+          --values '${{ parameters.chartPath }}/values-'"${environment}"'.yaml'
+        helm template pipeline-demo '${{ parameters.chartPath }}' \
+          --namespace 'pipeline-demo-'"${environment}" \
+          --values '${{ parameters.chartPath }}/values-'"${environment}"'.yaml' \
+          --set image.repository=example.azurecr.io/pipeline-demo-api \
+          --set image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          > '${{ parameters.outputDirectory }}/pipeline-demo-'"${environment}"'.yaml'
+        python scripts/validate_helm_manifests.py \
+          --manifest '${{ parameters.outputDirectory }}/pipeline-demo-'"${environment}"'.yaml' \
+          --environment "${environment}"
+      done
+      helm package '${{ parameters.chartPath }}' \
+        --destination '${{ parameters.outputDirectory }}'
+    displayName: Lint, render, and validate Helm chart

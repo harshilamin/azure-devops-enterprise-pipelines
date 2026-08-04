@@ -1,0 +1,107 @@
+parameters:
+  jobName: Container_Release
+  azureServiceConnection: ''
+  acrLoginServer: ''
+  imageRepository: ''
+  cosignKeyReference: ''
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Build, scan, sign, and publish immutable image
+    pool:
+      vmImage: $(vmImage)
+    workspace:
+      clean: all
+    steps:
+      - checkout: self
+        clean: true
+        fetchDepth: 0
+
+      - template: ../steps/setup-python.yml
+        parameters:
+          versionSpec: $(pythonVersion)
+          installDevDependencies: true
+
+      - template: ../steps/install-tools.yml
+        parameters:
+          installTrivy: true
+          installSyft: true
+          installCosign: true
+
+      - task: AzureCLI@2
+        displayName: Build and push immutable image
+        inputs:
+          azureSubscription: ${{ parameters.azureServiceConnection }}
+          scriptType: bash
+          scriptLocation: inlineScript
+          addSpnToEnvironment: true
+          inlineScript: |
+            set -euo pipefail
+            login_server='${{ parameters.acrLoginServer }}'
+            repository='${{ parameters.imageRepository }}'
+            tag="$(Build.BuildId)-$(Build.SourceVersion)"
+            image="${login_server}/${repository}:${tag}"
+            metadata='$(Build.ArtifactStagingDirectory)/buildx-metadata.json'
+
+            az acr login --name "${login_server%%.*}"
+            docker buildx create --use --name ado-builder || docker buildx use ado-builder
+            docker buildx inspect --bootstrap
+            docker buildx build \
+              --file '$(dockerfilePath)' \
+              --tag "${image}" \
+              --label "org.opencontainers.image.revision=$(Build.SourceVersion)" \
+              --label "org.opencontainers.image.version=${tag}" \
+              --metadata-file "${metadata}" \
+              --provenance=true \
+              --sbom=true \
+              --push \
+              '$(buildContext)'
+
+            python scripts/parse_buildx_metadata.py \
+              --metadata "${metadata}" \
+              --repository "${login_server}/${repository}" \
+              --output '$(Build.ArtifactStagingDirectory)/release-metadata.json' \
+              --digest-output '$(Build.ArtifactStagingDirectory)/image-digest.txt'
+
+      - bash: |
+          set -euo pipefail
+          repository='${{ parameters.acrLoginServer }}/${{ parameters.imageRepository }}'
+          digest="$(cat '$(Build.ArtifactStagingDirectory)/image-digest.txt')"
+          reference="${repository}@${digest}"
+          trivy image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --severity CRITICAL \
+            --format json \
+            --output '$(Build.ArtifactStagingDirectory)/trivy-image.json' \
+            "${reference}"
+          syft "${reference}" \
+            --output cyclonedx-json='$(Build.ArtifactStagingDirectory)/sbom.cdx.json'
+        displayName: Critical vulnerability gate and CycloneDX SBOM
+
+      - task: AzureCLI@2
+        displayName: Sign and attest with Azure Key Vault
+        condition: and(succeeded(), eq(variables['cosignEnabled'], 'true'))
+        inputs:
+          azureSubscription: ${{ parameters.azureServiceConnection }}
+          scriptType: bash
+          scriptLocation: inlineScript
+          addSpnToEnvironment: true
+          inlineScript: |
+            set -euo pipefail
+            repository='${{ parameters.acrLoginServer }}/${{ parameters.imageRepository }}'
+            digest="$(cat '$(Build.ArtifactStagingDirectory)/image-digest.txt')"
+            reference="${repository}@${digest}"
+            key='${{ parameters.cosignKeyReference }}'
+            cosign sign --yes --key "${key}" "${reference}"
+            cosign attest --yes \
+              --key "${key}" \
+              --type cyclonedx \
+              --predicate '$(Build.ArtifactStagingDirectory)/sbom.cdx.json' \
+              "${reference}"
+            cosign verify --key "${key}" "${reference}" \
+              > '$(Build.ArtifactStagingDirectory)/cosign-verification.json'
+
+      - publish: '$(Build.ArtifactStagingDirectory)'
+        displayName: Publish immutable release bundle
+        artifact: $(releaseBundleArtifact)

@@ -1,0 +1,104 @@
+name: infrastructure-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+pr: none
+
+parameters:
+  - name: targetEnvironment
+    displayName: Target environment
+    type: string
+    default: dev
+    values: [dev, qa, prod]
+  - name: action
+    displayName: Terraform action
+    type: string
+    default: plan
+    values: [plan, apply]
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+  - group: terraform-${{ parameters.targetEnvironment }}-config
+
+stages:
+  - stage: Terraform_Quality
+    displayName: Terraform quality gates
+    jobs:
+      - template: pipelines/templates/jobs/terraform-quality.yml
+
+  - stage: Terraform_Plan
+    displayName: Plan ${{ parameters.targetEnvironment }}
+    dependsOn: Terraform_Quality
+    jobs:
+      - template: pipelines/templates/jobs/terraform-plan.yml
+        parameters:
+          environment: ${{ parameters.targetEnvironment }}
+          azureServiceConnection: $(azureServiceConnection)
+          variableFile: ../environments/${{ parameters.targetEnvironment }}.tfvars
+
+  - ${{ if eq(parameters.action, 'apply') }}:
+      - stage: Apply_Approval
+        displayName: Apply approval
+        dependsOn: Terraform_Plan
+        jobs:
+          - job: Manual_Validation
+            displayName: Approve exact Terraform plan
+            pool: server
+            timeoutInMinutes: 1440
+            steps:
+              - task: ManualValidation@1
+                timeoutInMinutes: 1440
+                inputs:
+                  notifyUsers: $(infrastructureApprovers)
+                  approvers: $(infrastructureApprovers)
+                  allowApproversToApproveTheirOwnRuns: false
+                  instructions: >-
+                    Review tfplan.json, cost and security impact, change ticket
+                    $(changeTicket), and rollback strategy for ${{ parameters.targetEnvironment }}.
+                  onTimeout: reject
+
+      - stage: Terraform_Apply
+        displayName: Apply exact plan — ${{ parameters.targetEnvironment }}
+        dependsOn: Apply_Approval
+        jobs:
+          - deployment: Apply
+            displayName: Apply exact saved plan
+            environment: infrastructure-${{ parameters.targetEnvironment }}
+            pool:
+              vmImage: $(vmImage)
+            strategy:
+              runOnce:
+                deploy:
+                  steps:
+                    - checkout: self
+                      clean: true
+                    - download: current
+                      artifact: $(terraformPlanArtifact)-${{ parameters.targetEnvironment }}
+                    - template: pipelines/templates/steps/install-tools.yml
+                      parameters:
+                        installTerraform: true
+                    - template: pipelines/templates/steps/terraform-oidc-environment.yml
+                      parameters:
+                        azureServiceConnection: $(azureServiceConnection)
+                    - bash: |
+                        set -euo pipefail
+                        export ARM_CLIENT_ID='$(ARM_CLIENT_ID)'
+                        export ARM_TENANT_ID='$(ARM_TENANT_ID)'
+                        export ARM_OIDC_TOKEN='$(ARM_OIDC_TOKEN)'
+                        export ARM_SUBSCRIPTION_ID='$(ARM_SUBSCRIPTION_ID)'
+                        export ARM_USE_OIDC='$(ARM_USE_OIDC)'
+                        export ARM_USE_AZUREAD='$(ARM_USE_AZUREAD)'
+                        terraform -chdir='$(terraformRoot)' init \
+                          -input=false \
+                          -backend-config=resource_group_name='$(tfStateResourceGroup)' \
+                          -backend-config=storage_account_name='$(tfStateStorageAccount)' \
+                          -backend-config=container_name='$(tfStateContainer)' \
+                          -backend-config=key='$(tfStateKey)' \
+                          -backend-config=use_oidc=true \
+                          -backend-config=use_azuread_auth=true
+                        cp '$(Pipeline.Workspace)/$(terraformPlanArtifact)-${{ parameters.targetEnvironment }}/tfplan' \
+                          '$(terraformRoot)/tfplan'
+                        terraform -chdir='$(terraformRoot)' apply \
+                          -input=false \
+                          -lock-timeout=5m \
+                          tfplan
+                      displayName: Apply downloaded immutable plan

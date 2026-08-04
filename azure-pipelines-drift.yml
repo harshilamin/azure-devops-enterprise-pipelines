@@ -1,0 +1,79 @@
+name: drift-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: '0 6 * * 1-5'
+    displayName: Weekday drift detection
+    branches:
+      include:
+        - main
+    always: true
+
+parameters:
+  - name: failOnDrift
+    type: boolean
+    default: true
+  - name: environmentList
+    type: object
+    default:
+      - dev
+      - qa
+      - prod
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+
+stages:
+  - ${{ each environment in parameters.environmentList }}:
+      - stage: Drift_${{ environment }}
+        displayName: Drift detection — ${{ environment }}
+        variables:
+          - group: terraform-${{ environment }}-config
+        jobs:
+          - job: Detect
+            pool:
+              vmImage: $(vmImage)
+            steps:
+              - checkout: self
+                clean: true
+              - template: pipelines/templates/steps/install-tools.yml
+                parameters:
+                  installTerraform: true
+              - template: pipelines/templates/steps/terraform-oidc-environment.yml
+                parameters:
+                  azureServiceConnection: $(azureServiceConnection)
+              - bash: |
+                  set -euo pipefail
+                  export ARM_CLIENT_ID='$(ARM_CLIENT_ID)'
+                  export ARM_TENANT_ID='$(ARM_TENANT_ID)'
+                  export ARM_OIDC_TOKEN='$(ARM_OIDC_TOKEN)'
+                  export ARM_SUBSCRIPTION_ID='$(ARM_SUBSCRIPTION_ID)'
+                  export ARM_USE_OIDC='$(ARM_USE_OIDC)'
+                  export ARM_USE_AZUREAD='$(ARM_USE_AZUREAD)'
+                  terraform -chdir='$(terraformRoot)' init \
+                    -input=false \
+                    -backend-config=resource_group_name='$(tfStateResourceGroup)' \
+                    -backend-config=storage_account_name='$(tfStateStorageAccount)' \
+                    -backend-config=container_name='$(tfStateContainer)' \
+                    -backend-config=key='$(tfStateKey)' \
+                    -backend-config=use_oidc=true \
+                    -backend-config=use_azuread_auth=true
+                  set +e
+                  terraform -chdir='$(terraformRoot)' plan \
+                    -input=false \
+                    -detailed-exitcode \
+                    -var-file='../environments/${{ environment }}.tfvars' \
+                    -out='$(Build.ArtifactStagingDirectory)/drift-${{ environment }}.tfplan'
+                  exit_code=$?
+                  set -e
+                  case "${exit_code}" in
+                    0) echo 'No drift detected.' ;;
+                    1) echo 'Terraform planning failed.'; exit 1 ;;
+                    2)
+                      echo '##vso[task.logissue type=warning]Infrastructure drift detected for ${{ environment }}.'
+                      if [[ '${{ parameters.failOnDrift }}' == 'true' ]]; then exit 2; fi
+                      ;;
+                  esac
+                displayName: Detect Terraform drift

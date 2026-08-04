@@ -1,0 +1,111 @@
+parameters:
+  stageName: ''
+  displayName: ''
+  dependsOn: []
+  condition: succeeded()
+  environmentName: ''
+  azureDevOpsEnvironment: ''
+  variableGroupName: ''
+  azureServiceConnection: ''
+  keyVaultName: ''
+  aksResourceGroup: ''
+  aksClusterName: ''
+  namespace: ''
+  valuesFile: ''
+  acrLoginServer: ''
+  imageRepository: ''
+  smokeTestPath: /health/ready
+  releaseName: pipeline-demo-api
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      - group: ${{ parameters.variableGroupName }}
+    jobs:
+      - deployment: Deploy
+        displayName: Deploy ${{ parameters.environmentName }}
+        environment: ${{ parameters.azureDevOpsEnvironment }}
+        pool:
+          vmImage: $(vmImage)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+
+                - download: current
+                  artifact: $(releaseBundleArtifact)
+                  displayName: Download immutable release bundle
+
+                - template: ../steps/setup-python.yml
+                  parameters:
+                    versionSpec: $(pythonVersion)
+                    installDevDependencies: true
+
+                - template: ../steps/install-tools.yml
+                  parameters:
+                    installHelm: true
+                    installKubectl: true
+
+                - task: AzureKeyVault@2
+                  displayName: Retrieve runtime smoke-test secret
+                  condition: and(succeeded(), ne(variables['keyVaultName'], ''))
+                  inputs:
+                    azureSubscription: ${{ parameters.azureServiceConnection }}
+                    KeyVaultName: ${{ parameters.keyVaultName }}
+                    SecretsFilter: SmokeTestApiKey
+                    RunAsPreJob: true
+
+                - task: AzureCLI@2
+                  displayName: Helm deploy ${{ parameters.environmentName }}
+                  inputs:
+                    azureSubscription: ${{ parameters.azureServiceConnection }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      digest="$(cat '$(Pipeline.Workspace)/$(releaseBundleArtifact)/image-digest.txt')"
+                      python scripts/validate_digest.py "${digest}"
+
+                      az aks get-credentials \
+                        --resource-group '${{ parameters.aksResourceGroup }}' \
+                        --name '${{ parameters.aksClusterName }}' \
+                        --overwrite-existing
+
+                      kubectl create namespace '${{ parameters.namespace }}' \
+                        --dry-run=client -o yaml | kubectl apply -f -
+
+                      helm upgrade --install '${{ parameters.releaseName }}' '$(chartPath)' \
+                        --namespace '${{ parameters.namespace }}' \
+                        --values '${{ parameters.valuesFile }}' \
+                        --set-string image.repository='${{ parameters.acrLoginServer }}/${{ parameters.imageRepository }}' \
+                        --set-string image.digest="${digest}" \
+                        --set-string image.tag='' \
+                        --set-string deployment.buildId='$(Build.BuildId)' \
+                        --set-string deployment.commitSha='$(Build.SourceVersion)' \
+                        --atomic \
+                        --timeout 10m \
+                        --wait
+
+                      kubectl rollout status deployment/${{ parameters.releaseName }} \
+                        --namespace '${{ parameters.namespace }}' \
+                        --timeout=5m
+
+                      python scripts/smoke_test.py \
+                        --namespace '${{ parameters.namespace }}' \
+                        --service '${{ parameters.releaseName }}' \
+                        --path '${{ parameters.smokeTestPath }}' \
+                        --api-key "${SMOKE_TEST_API_KEY:-}"
+                  env:
+                    SMOKE_TEST_API_KEY: $(SmokeTestApiKey)
+
+                - bash: |
+                    set -euo pipefail
+                    digest="$(cat '$(Pipeline.Workspace)/$(releaseBundleArtifact)/image-digest.txt')"
+                    echo "##vso[build.addbuildtag]${{ parameters.environmentName }}"
+                    echo "##vso[build.addbuildtag]${digest:0:19}"
+                  displayName: Record deployment evidence

@@ -1,0 +1,7 @@
+variables:
+  environmentName: development
+  azureDevOpsEnvironment: pipeline-demo-dev
+  kubernetesNamespace: pipeline-demo-dev
+  variableGroupName: pipeline-demo-dev-config
+  helmValuesFile: deploy/helm/pipeline-demo-api/values-dev.yaml
+  smokeTestPath: /api/v1/build

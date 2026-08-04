@@ -1,0 +1,22 @@
+parameters:
+  jobName: Terraform_Quality
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Terraform static quality gates
+    pool:
+      vmImage: $(vmImage)
+    steps:
+      - checkout: self
+        clean: true
+
+      - template: ../steps/install-tools.yml
+        parameters:
+          installTerraform: true
+
+      - bash: |
+          set -euo pipefail
+          terraform fmt -check -recursive infra/terraform
+          terraform -chdir='$(terraformRoot)' init -backend=false
+          terraform -chdir='$(terraformRoot)' validate
+        displayName: Terraform format and validate

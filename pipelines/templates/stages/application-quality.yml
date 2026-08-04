@@ -1,0 +1,12 @@
+parameters:
+  includeTerraform: false
+
+stages:
+  - stage: Quality
+    displayName: Application and repository quality
+    jobs:
+      - template: ../jobs/application-quality.yml
+      - template: ../jobs/helm-quality.yml
+      - template: ../jobs/repository-contracts.yml
+      - ${{ if eq(parameters.includeTerraform, true) }}:
+          - template: ../jobs/terraform-quality.yml

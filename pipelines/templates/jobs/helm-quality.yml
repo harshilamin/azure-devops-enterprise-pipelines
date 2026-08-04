@@ -1,0 +1,29 @@
+parameters:
+  jobName: Helm_Quality
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Helm and Kubernetes quality gates
+    pool:
+      vmImage: $(vmImage)
+    steps:
+      - checkout: self
+        clean: true
+
+      - template: ../steps/setup-python.yml
+        parameters:
+          versionSpec: $(pythonVersion)
+          installDevDependencies: true
+
+      - template: ../steps/install-tools.yml
+        parameters:
+          installHelm: true
+
+      - template: ../steps/helm-validate.yml
+        parameters:
+          chartPath: $(chartPath)
+          outputDirectory: $(Build.ArtifactStagingDirectory)/rendered
+
+      - publish: '$(Build.ArtifactStagingDirectory)/rendered'
+        displayName: Publish rendered manifests
+        artifact: rendered-manifests

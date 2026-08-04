@@ -1,0 +1,23 @@
+{
+  "authorization": {
+    "parameters": {
+      "tenantid": "TENANT_ID",
+      "serviceprincipalid": "APP_REGISTRATION_CLIENT_ID",
+      "authenticationType": "WorkloadIdentityFederation"
+    },
+    "scheme": "WorkloadIdentityFederation"
+  },
+  "data": {
+    "subscriptionId": "SUBSCRIPTION_ID",
+    "subscriptionName": "SUBSCRIPTION_NAME",
+    "environment": "AzureCloud",
+    "scopeLevel": "Subscription",
+    "creationMode": "Manual"
+  },
+  "name": "sc-azure-wif-platform",
+  "type": "azurerm",
+  "url": "https://management.azure.com/",
+  "isShared": false,
+  "isReady": true,
+  "description": "Azure Resource Manager service connection using Workload Identity Federation"
+}

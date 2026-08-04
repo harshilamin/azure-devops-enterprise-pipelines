@@ -1,0 +1,62 @@
+name: security-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: '0 7 * * 0'
+    displayName: Weekly security review
+    branches:
+      include:
+        - main
+    always: true
+
+variables:
+  - template: pipelines/templates/variables/global.yml
+
+stages:
+  - stage: Security
+    jobs:
+      - job: Scan
+        displayName: Dependency, repository, container, Helm, and IaC security
+        pool:
+          vmImage: $(vmImage)
+        steps:
+          - checkout: self
+            clean: true
+            fetchDepth: 0
+
+          - template: pipelines/templates/steps/setup-python.yml
+            parameters:
+              versionSpec: $(pythonVersion)
+              installDevDependencies: true
+
+          - template: pipelines/templates/steps/install-tools.yml
+            parameters:
+              installTrivy: true
+              installHelm: true
+              installTerraform: true
+
+          - bash: |
+              set -euo pipefail
+              mkdir -p '$(Build.ArtifactStagingDirectory)/security'
+              python -m pip_audit \
+                --format json \
+                --output '$(Build.ArtifactStagingDirectory)/security/pip-audit.json'
+              trivy fs \
+                --scanners vuln,misconfig,secret \
+                --severity HIGH,CRITICAL \
+                --exit-code 1 \
+                --format json \
+                --output '$(Build.ArtifactStagingDirectory)/security/trivy-repository.json' \
+                .
+              helm lint '$(chartPath)' --strict
+              terraform fmt -check -recursive infra/terraform
+              terraform -chdir='$(terraformRoot)' init -backend=false
+              terraform -chdir='$(terraformRoot)' validate
+            displayName: Run security gates
+
+          - publish: '$(Build.ArtifactStagingDirectory)/security'
+            displayName: Publish security reports
+            condition: always()
+            artifact: $(securityReportsArtifact)

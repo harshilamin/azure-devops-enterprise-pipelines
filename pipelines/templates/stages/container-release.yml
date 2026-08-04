@@ -1,0 +1,19 @@
+parameters:
+  dependsOn: Quality
+  azureServiceConnection: ''
+  acrLoginServer: ''
+  imageRepository: ''
+  cosignKeyReference: ''
+
+stages:
+  - stage: Container_Release
+    displayName: Immutable container release
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: succeeded()
+    jobs:
+      - template: ../jobs/container-release.yml
+        parameters:
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          acrLoginServer: ${{ parameters.acrLoginServer }}
+          imageRepository: ${{ parameters.imageRepository }}
+          cosignKeyReference: ${{ parameters.cosignKeyReference }}

@@ -1,0 +1,53 @@
+parameters:
+  jobName: Terraform_Plan
+  environment: ''
+  azureServiceConnection: ''
+  variableFile: ''
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Terraform plan — ${{ parameters.environment }}
+    pool:
+      vmImage: $(vmImage)
+    steps:
+      - checkout: self
+        clean: true
+
+      - template: ../steps/install-tools.yml
+        parameters:
+          installTerraform: true
+
+      - template: ../steps/terraform-oidc-environment.yml
+        parameters:
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+
+      - bash: |
+          set -euo pipefail
+          export ARM_CLIENT_ID='$(ARM_CLIENT_ID)'
+          export ARM_TENANT_ID='$(ARM_TENANT_ID)'
+          export ARM_OIDC_TOKEN='$(ARM_OIDC_TOKEN)'
+          export ARM_SUBSCRIPTION_ID='$(ARM_SUBSCRIPTION_ID)'
+          export ARM_USE_OIDC='$(ARM_USE_OIDC)'
+          export ARM_USE_AZUREAD='$(ARM_USE_AZUREAD)'
+
+          terraform -chdir='$(terraformRoot)' init \
+            -input=false \
+            -backend-config=resource_group_name='$(tfStateResourceGroup)' \
+            -backend-config=storage_account_name='$(tfStateStorageAccount)' \
+            -backend-config=container_name='$(tfStateContainer)' \
+            -backend-config=key='$(tfStateKey)' \
+            -backend-config=use_oidc=true \
+            -backend-config=use_azuread_auth=true
+          terraform -chdir='$(terraformRoot)' plan \
+            -input=false \
+            -lock-timeout=5m \
+            -out='$(Build.ArtifactStagingDirectory)/tfplan' \
+            -var-file='${{ parameters.variableFile }}'
+          terraform -chdir='$(terraformRoot)' show -json \
+            '$(Build.ArtifactStagingDirectory)/tfplan' \
+            > '$(Build.ArtifactStagingDirectory)/tfplan.json'
+        displayName: Create immutable Terraform plan
+
+      - publish: '$(Build.ArtifactStagingDirectory)'
+        displayName: Publish Terraform plan artifact
+        artifact: $(terraformPlanArtifact)-${{ parameters.environment }}
