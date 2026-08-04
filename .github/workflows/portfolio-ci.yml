@@ -43,4 +43,5 @@ jobs:
           terraform_version: 1.15.8
 
       - name: Validate repository
-        run: ./scripts/validate-repository.sh
+        shell: bash
+        run: bash ./scripts/validate-repository.sh
