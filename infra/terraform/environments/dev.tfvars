@@ -1,8 +1,8 @@
 location            = "southcentralus"
 resource_group_name = "rg-ado-pipelines-dev"
-acr_name             = "replaceadoacrdev01"
-key_vault_name       = "kv-ado-pipelines-dev"
-environment          = "dev"
+acr_name            = "replaceadoacrdev01"
+key_vault_name      = "kv-ado-pipelines-dev"
+environment         = "dev"
 
 # Replace with Azure object IDs after the WIF service connection and AKS exist.
 pipeline_principal_object_id = ""

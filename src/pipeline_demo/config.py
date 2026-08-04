@@ -13,7 +13,7 @@ class Settings:
     port: int = 8080
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         raw_port = os.getenv("APP_PORT", "8080")
         try:
             port = int(raw_port)

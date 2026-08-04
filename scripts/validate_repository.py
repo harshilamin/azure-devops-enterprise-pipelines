@@ -53,7 +53,8 @@ REQUIRED = (
 
 def yaml_documents() -> list[Path]:
     return sorted(
-        path for path in ROOT.rglob("*")
+        path
+        for path in ROOT.rglob("*")
         if path.is_file()
         and path.suffix.lower() in {".yml", ".yaml"}
         and not any(part in {".git", ".venv", ".artifacts"} for part in path.parts)
@@ -131,9 +132,7 @@ def assert_mkdocs_nav() -> None:
         return found
 
     missing = [
-        item
-        for item in paths(config.get("nav", []))
-        if not (ROOT / "docs" / item).is_file()
+        item for item in paths(config.get("nav", [])) if not (ROOT / "docs" / item).is_file()
     ]
     if missing:
         raise AssertionError(f"MkDocs nav targets missing: {missing}")

@@ -6,7 +6,7 @@ import argparse
 import json
 import subprocess
 import time
-from typing import Sequence
+from collections.abc import Sequence
 
 
 def run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
