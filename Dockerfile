@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.13.6-slim-bookworm AS builder
+FROM python:3.14.6-slim-bookworm AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -14,7 +14,7 @@ COPY src ./src
 RUN pip install --upgrade pip setuptools wheel \
     && pip install .
 
-FROM python:3.13.6-slim-bookworm AS runtime
+FROM python:3.14.6-slim-bookworm AS runtime
 
 ARG APP_UID=10001
 ARG APP_GID=10001
